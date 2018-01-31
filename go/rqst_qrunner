@@ -1,0 +1,160 @@
+//////////////////////////////////////////////////////////////////////////////
+package main
+
+func main() {
+	qrdb := rqst_qrunner.NewDBReader(theINSPIDSN)
+	qr := rqst_qrunner.NewRqst(qrdb)
+
+	qid, err := qr.LookForItem()
+	qi, err := qr.FetchItem(qid)
+	// ... stat, err := qr.ProcessItem(qi)
+}
+
+
+func test_one() {
+	qrfr := rqst_qrunner.NewFileReader("/yellow/brick/road")
+	qr := rqst_qrunner.NewRqst(qrfr)
+
+	qid, err := qr.LookForItem()
+	qi, err := qr.FetchItem(qid)
+	// ... stat, err := qr.ProcessItem(qi)
+}
+
+
+//////////////////////////////////////////////////////////////////////////////
+package qrunner
+
+type QueueItem interface{}
+
+type Looker interface {
+	LookForItem() (string, error)
+}
+
+type Fetcher interface {
+	FetchItem(qid string) (QueueItem, error)
+}
+
+
+//
+// since the package name and structure will already namespace, say, rqst_qrunner
+// apart from task_qrunner, why have the 'qrunner' interfaces, above?  why not
+// just have functions like LookForItem() and FetchItem() in the separate packages
+// 'rqst_qrunner' and 'task_qrunner'?  even a processor that needs to manage two
+// kinds of queues will distinguish them with e.g. rq = rqst_qrunner.NewRqstQRunner{}
+// and tq = task_qrunner.NewTaskQRunner{} ...
+//
+// having the 'Looker' and 'Fetcher' interface let me pass them as arguments to things
+// that don't know the difference between 'rqst_qrunner' and 'task_qrunner', ...  but
+// what sorts of things would I pass 'Looker' and 'Fetcher' *to* ?
+//
+//////////////////////////////////////////////////////////////////////////////
+package rqst_qrunner
+
+////////
+type RqstItem struct {
+	RqstID          string
+	XMLOfRequest    string
+	XMLOfReqestAck  string
+	EQTransactionID string
+	QueueStatus     string
+}
+
+type Rqst struct {
+	DataAccessHandle *DataAccessor
+}
+
+func NewRqst(dah *DataAccessor) *Rqst {
+	return &Rqst {
+		DataAccessHandle: dah,
+	}
+}
+
+func (r *Rqst) LookForItem() (rid string, re error) {
+	rid := r.DataAccessHandle.LookForItemz()
+	return rid, nil
+}
+
+func (r *Rqst) FetchItem(iid string) (ri QueueItem, re error) {
+	ri := r.DataAccessHandle.FetchDataz(iid)
+	return ri, nil
+}
+
+//
+//  the below DataAccessor feels like there will be the same code for each kind of queue runner,
+//  differing only by the structure of the queue item it deals with, ...
+//
+//  it's tempting to try and genericize DataAccessor by putting it in 'qrunner' and having
+//  FetchDataz return a QueueItem;  then, rqst_qrunner would have FetchRqstDataz (I guess) ...
+//  but this leads back to where I am currently, where I made a GenericQueueRunner with all the
+//  generic queue management functionality, and RqstQueueRunner is a struct with a
+//  GenericQueueRunner field (thus, nested structs ...)     How do I know *where* to stop genericizing?!?
+//
+////////////////
+type DataAccessor interface {
+	LookForItemz() string
+	FetchDataz(rid string) RqstItem
+}
+
+////////
+type DBReader struct {
+	DBLocator    string
+	DBConnection *sqlx.DBH
+}
+
+func NewDBReader(dsn string) *DBReader {
+	// open database connection based on the dsn
+	return &DBReader{
+		DBLocator:    dsn
+		DBConnection: ...the opened connection...
+	}
+}
+
+func (dbr *DBReader) LookForItemz(rqid string) rtrn string {
+	// ...
+}
+
+func (dbr *DBReader) FetchDataz(rqid string) rtrn RqstItem {
+	// ensure non-nil database connection
+	// compose SQL query for reading queue item from a specific datatable based on 'rqid'
+	// execute the query
+	rtrn = &RqstItem {
+		RqstID:          ...query result, column 'qid'...
+		XMLOfRequest:    ...query result, column 'requestxml'...
+		XMLOfReqestAck:  ...query result, column 'ackxml'...
+		EQTransactionID: ...query result, column 'eqtxnid'...
+		Status:          ...query result, column 'status'...
+	}
+
+	return rtrn
+}
+
+////////
+type FileReader struct {
+	FilePath string
+}
+
+func NewFileReader(path string) *FileReader {
+	// maybe do some validation on the supplied FilePath
+	return &FileReader{
+		FilePath: path
+	}
+}
+
+func (fr *FileReader) LookForItemz(rfid string) rtrn string {
+	// ...
+}
+
+func (fr *FileReader) FetchDataz(rfid string) rtrn RqstItem {
+	// ensure non-nil file path
+	// compose fully-qualified filename to read based on 'rfid'
+	// open and read the file
+	rtrn = &RqstItem {
+		RqstID:          ...file-read result, field 'wtfr_qid'...
+		XMLOfRequest:    ...file-read result, field 'wtfr_requestxml'...
+		XMLOfReqestAck:  ...file-read result, field 'wtfr_ackxml'...
+		EQTransactionID: ...file-read result, field 'wtfr_eqtxnid'...
+		Status:          ...file-read result, field 'wtfr_status'...
+	}
+
+	return rtrn
+}
