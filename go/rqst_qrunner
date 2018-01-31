@@ -1,38 +1,176 @@
 //////////////////////////////////////////////////////////////////////////////
 package main
 
+// in rqst_queue_processor.go
 func main() {
-	qrdb := rqst_qrunner.NewDBReader(theINSPIDSN)
-	qr := rqst_qrunner.NewRqst(qrdb)
+	dataAccessor := dataaccesslayer.NewDataAccessorOracle(theINSPIdsn)
+	inboundQueue := &QueueForEqDropOff{...}
+	qi := fetchItemFromQueue(dataAccessor, inboundQueue)
+	digestedrequest := processFetchedQueueItem(inboundQueue, qi)
+}
 
-	qid, err := qr.LookForItem()
-	qi, err := qr.FetchItem(qid)
-	// ... stat, err := qr.ProcessItem(qi)
+func fetchItemFromQueue(dataaccessor DataAccessorInterface, rqstqueue QueueInterface) (RqstQueueItem) {
+	qid := dataaccessor.LookForItemz(rqstqueue)
+	err := dataaccessor.LockThatItemBoi(rqstqueue, qid)
+	itm := dataaccessor.FetchMeAnItem(rqstqueue, qid)
+
+	rqstitm := QueueItemInterface.(RqstQueueItem)
+	return rqstitm
+
+	// ...  -OR-  would we do:
+	// qid := rqstqueue.LookForItemz(dataaccessor)
+	// etc.
+}
+
+func processFetchedQueueItem(somequeue QueueInterface, rqstitm RqstQueueItem) (PBufRqstQueueItem) {
+	protobufofrqstitm := somequeue.ParseQueueItem(rqstitm)
+
+	// all orders from ParanoidBank must be rot13'd before we can proceed
+	if protobufofrqstitm.Client.Name == 'ParanoidBank' {
+		protobufofrqstitm = Rot13ThatSucker(protobufofrqstitm)
+	}
+
+	return protobufofrqstitm
 }
 
 
+// in rqst_queue_processor_test.go
 func test_one() {
-	qrfr := rqst_qrunner.NewFileReader("/yellow/brick/road")
-	qr := rqst_qrunner.NewRqst(qrfr)
-
-	qid, err := qr.LookForItem()
-	qi, err := qr.FetchItem(qid)
-	// ... stat, err := qr.ProcessItem(qi)
+	dataAccessor := dataaccesslayer.NewDataAccessorLocalFiles("/yellow/brick/road")
+	inboundQueue := &QueueForEqDropOff{...}
+	qi := fetchItemFromQueue(dataAccessor, inboundQueue)
+	digestedrequest := processFetchedQueueItem(inboundQueue, qi)
 }
+
+
+//////////////////////////////////////////////////////////////////////////////
+package dataaccesslayer
+
+// why *shouldn't* I group these methods together?  it's hard to imagine a queue data accessor that does not need to do all of these,
+// and if they are separate interfaces, we'd need to pass a bunch of interfaces to functions that handle queue items ...
+type DataAccessorInterface interface {
+	LookForItemz(QueueInterface) (string)
+	LockThatItemBoi(QueueInterface, string) (error)
+	FetchMeAnItem(QueueInterface, string) (QueueItemInterface)
+}
+
+
+// same package and file?  or different file?  different package?  different both?
+type DataAccessorOracle struct {
+	DBDSN        string
+	DBConnection *sqlx.DBH
+}
+
+func NewDataAccessorOracle(dsn string) *DataAccessorOracle {
+	// open database connection based on the dsn
+	return &DataAccessorOracle{
+		DBDSN:        dsn
+		DBConnection: ...the opened connection...
+	}
+}
+
+func (daora *DataAccessorOracle) LookForItemz(somequeue QueueInterface) string {
+	details = somequeue.DescribeYourselfForMe()
+	// ...
+}
+
+func (daora *DataAccessorOracle) LockThatItemBoi(somequeue QueueInterface, qid string) error {
+	details = somequeue.DescribeYourselfForMe()
+	// ...
+}
+
+func (daora *DataAccessorOracle) FetchDataz(somequeue QueueInterface, qid string) QueueItemInterface {
+	details = somequeue.DescribeYourselfForMe()
+
+	// ensure non-nil database connection
+	// compose SQL query for reading queue item based on 'details'
+	// execute the query
+
+	// would it be feasible to scan the DB query result into a struct identified in the 'details' from somequeue.DescribeYourselfForMe() ?
+	//     - e.g., one of the fields on 'details' could be an empty struct, that we inspect for *its* fields, then set those fields from columns of the same name ...
+	//     - is this what sqlx.Scan does ?
+	//
+	// or should these dataaccesslayer thingies return generic data objects like arrays, and let the caller decide if/how to organize the array into something more, um, "struct"ured
+}
+
+
+// same package and file?  or different file?  different package?  different both?
+type DataAccessorLocalFiles struct {
+	FilePath string
+}
+
+func NewDataAccessorLocalFiles(path string) *DataAccessorLocalFiles {
+	// maybe do some validation on the supplied FilePath
+	return &DataAccessorLocalFiles{
+		FilePath: path
+	}
+}
+
+func (daora *DataAccessorLocalFiles) LookForItemz(somequeue QueueInterface) string {
+	details = somequeue.DescribeYourselfForMe()
+	// ...
+}
+
+func (daora *DataAccessorLocalFiles) LockThatItemBoi(somequeue QueueInterface, qid string) error {
+	details = somequeue.DescribeYourselfForMe()
+	// ...
+}
+
+func (daora *DataAccessorLocalFiles) FetchDataz(somequeue QueueInterface, qid string) QueueItemInterface {
+	details = somequeue.DescribeYourselfForMe()
+
+	// ensure non-nil file path
+	// compose fully-qualified filename to read based on 'details'
+	// execute the query
+
+	// would it be feasible to scan the file read result into a struct identified in the 'details' from somequeue.DescribeYourselfForMe() ?
+	//     - e.g., one of the fields on 'details' could be an empty struct, that we inspect for *its* fields, then set those fields from record keys of the same name ...
+}
+
+
 
 
 //////////////////////////////////////////////////////////////////////////////
 package qrunner
 
-type QueueItem interface{}
+type QueueItemInterface interface{}
 
-type Looker interface {
-	LookForItem() (string, error)
+// aren't I going to end up grouping methods into here, like with DataAccessorInterface?
+type QueueInterface interface {
+	ParseQueueItem(QueueItemInterface) proto.Message  // correct?
 }
 
-type Fetcher interface {
-	FetchItem(qid string) (QueueItem, error)
+
+//////////////////////////////////////////////////////////////////////////////
+package rqst_qrunner
+
+type RqstItem struct {
+	RqstID          string
+	XMLOfRequest    string
+	XMLOfReqestAck  string
+	EQTransactionID string
+	QueueStatus     string
 }
+
+type Rqst struct {
+}
+
+func NewRqst(dah *DataAccessor) *Rqst {
+        return &Rqst {}
+}
+
+func (r *Rqst) ParseQueueItem(itm *QueueItemInterface) proto.Message {
+	
+	// tear itm apart and 
+}
+
+
+
+//////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////
+////////////////    old stuff from 01 below    ///////////////////////////////
+//////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////
 
 
 //
@@ -49,30 +187,6 @@ type Fetcher interface {
 //
 //////////////////////////////////////////////////////////////////////////////
 package rqst_qrunner
-
-////////
-type RqstItem struct {
-	RqstID          string
-	XMLOfRequest    string
-	XMLOfReqestAck  string
-	EQTransactionID string
-	QueueStatus     string
-}
-
-type Rqst struct {
-	DataAccessHandle *DataAccessor
-}
-
-func NewRqst(dah *DataAccessor) *Rqst {
-	return &Rqst {
-		DataAccessHandle: dah,
-	}
-}
-
-func (r *Rqst) LookForItem() (rid string, re error) {
-	rid := r.DataAccessHandle.LookForItemz()
-	return rid, nil
-}
 
 func (r *Rqst) FetchItem(iid string) (ri QueueItem, re error) {
 	ri := r.DataAccessHandle.FetchDataz(iid)
@@ -95,66 +209,3 @@ type DataAccessor interface {
 	FetchDataz(rid string) RqstItem
 }
 
-////////
-type DBReader struct {
-	DBLocator    string
-	DBConnection *sqlx.DBH
-}
-
-func NewDBReader(dsn string) *DBReader {
-	// open database connection based on the dsn
-	return &DBReader{
-		DBLocator:    dsn
-		DBConnection: ...the opened connection...
-	}
-}
-
-func (dbr *DBReader) LookForItemz(rqid string) rtrn string {
-	// ...
-}
-
-func (dbr *DBReader) FetchDataz(rqid string) rtrn RqstItem {
-	// ensure non-nil database connection
-	// compose SQL query for reading queue item from a specific datatable based on 'rqid'
-	// execute the query
-	rtrn = &RqstItem {
-		RqstID:          ...query result, column 'qid'...
-		XMLOfRequest:    ...query result, column 'requestxml'...
-		XMLOfReqestAck:  ...query result, column 'ackxml'...
-		EQTransactionID: ...query result, column 'eqtxnid'...
-		Status:          ...query result, column 'status'...
-	}
-
-	return rtrn
-}
-
-////////
-type FileReader struct {
-	FilePath string
-}
-
-func NewFileReader(path string) *FileReader {
-	// maybe do some validation on the supplied FilePath
-	return &FileReader{
-		FilePath: path
-	}
-}
-
-func (fr *FileReader) LookForItemz(rfid string) rtrn string {
-	// ...
-}
-
-func (fr *FileReader) FetchDataz(rfid string) rtrn RqstItem {
-	// ensure non-nil file path
-	// compose fully-qualified filename to read based on 'rfid'
-	// open and read the file
-	rtrn = &RqstItem {
-		RqstID:          ...file-read result, field 'wtfr_qid'...
-		XMLOfRequest:    ...file-read result, field 'wtfr_requestxml'...
-		XMLOfReqestAck:  ...file-read result, field 'wtfr_ackxml'...
-		EQTransactionID: ...file-read result, field 'wtfr_eqtxnid'...
-		Status:          ...file-read result, field 'wtfr_status'...
-	}
-
-	return rtrn
-}
